@@ -1,5 +1,4 @@
 let net = require('net');
-
 const ReadyState = {
   UNSENT: 0, //（代理被创建，但尚未调用 open() 方法。
   OPENED: 1, //open() 方法已经被调用
@@ -9,8 +8,8 @@ const ReadyState = {
 };
 class XMLHttpRequest {
   constructor() {
-    this.readyState = ReadyState.UNSENT; // 默认是初始化的，未调用open方法
-    this.headers = { Connection: 'keep-alive' };
+    this.readyState = ReadyState.UNSENT;
+    this.headers = {};
   }
   open(method, url) {
     this.method = method || 'GET';
@@ -20,38 +19,29 @@ class XMLHttpRequest {
     this.port = port;
     this.path = path;
     this.headers.Host = `${hostname}:${port}`;
-    // 通过传输层的net模块发起请求
+    this.headers.Connection = 'keep-alive';
     const socket = (this.socket = net.createConnection(
       { port: this.port, hostname: this.hostname },
       () => {
-        // 连接成功之后， 监听服务端响应
         socket.on('data', (data) => {
           data = data.toString();
-          console.log('data', data);
-
-          let [response, bodyRows] = data.split('\r\n\r\n'); // 分割响应行+响应头 和 响应体
-          let [statusLine, ...headerRows] = response.split('\r\n'); // 分割响应行 和 响应头
+          console.log('post response', data);
+          let [response, bodyRows] = data.split('\r\n\r\n');
+          let [statusLine, ...headerRows] = response.split('\r\n');
           let [, status, statusText] = statusLine.split(' ');
-
           this.status = status;
           this.statusText = statusText;
-
-          // 响应头
           this.responseHeaders = headerRows.reduce((memo, row) => {
             let [key, value] = row.split(': ');
             memo[key] = value;
             return memo;
           }, {});
-
           this.readyState = ReadyState.HEADERS_RECEIVED;
           xhr.onreadystatechange && xhr.onreadystatechange();
           this.readyState = ReadyState.LOADING;
           xhr.onreadystatechange && xhr.onreadystatechange();
-
-          // 响应体
           let [, body] = bodyRows.split('\r\n');
           this.response = this.responseText = body;
-
           this.readyState = ReadyState.DONE;
           xhr.onreadystatechange && xhr.onreadystatechange();
           this.onload && this.onload();
@@ -61,7 +51,6 @@ class XMLHttpRequest {
         });
       }
     ));
-
     this.readyState = ReadyState.OPENED;
     xhr.onreadystatechange && xhr.onreadystatechange();
   }
@@ -75,12 +64,14 @@ class XMLHttpRequest {
   setRequestHeader(header, value) {
     this.headers[header] = value;
   }
-  send() {
+  send(body) {
     let rows = [];
-    // 按格式拼接
     rows.push(`${this.method} ${this.path} HTTP/1.1`);
+    this.headers['Content-Length'] = Buffer.byteLength(body); // 告诉服务器请求体的长度
     rows.push(...Object.keys(this.headers).map((key) => `${key}: ${this.headers[key]}`));
-    this.socket.write(rows.join('\r\n') + '\r\n\r\n');
+    let request = rows.join('\r\n') + '\r\n\r\n' + body;
+    console.log('post request', request);
+    this.socket.write(request);
   }
 }
 
@@ -88,10 +79,9 @@ let xhr = new XMLHttpRequest();
 xhr.onreadystatechange = () => {
   console.log('onreadystatechange', xhr.readyState);
 };
-xhr.open('GET', 'http://127.0.0.1:8080/get');
+xhr.open('POST', 'http://127.0.0.1:8080/post');
 xhr.responseType = 'text';
-xhr.setRequestHeader('name', 'zhufeng');
-xhr.setRequestHeader('age', '10');
+xhr.setRequestHeader('Content-Type', 'application/json');
 xhr.onload = () => {
   console.log('readyState', xhr.readyState);
   console.log('status', xhr.status);
@@ -99,4 +89,4 @@ xhr.onload = () => {
   console.log('getAllResponseHeaders', xhr.getAllResponseHeaders());
   console.log('response', xhr.response);
 };
-xhr.send();
+xhr.send(`{"name":"zx"}`);
